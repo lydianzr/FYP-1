@@ -75,11 +75,4 @@ Upload a JSON file in the Document Processing tab to calculate extraction metric
 }
 ```
 
-## Evaluation Targets
-
-- Extraction precision, recall, F1: at least 0.80
-- Field accuracy rate: at least 0.85
-- RAG retrieval relevance, faithfulness, context precision: at least 0.80
-- RAG answer correctness: at least 0.75
-
 Keep real logistics documents and personally identifiable information out of public repositories.
