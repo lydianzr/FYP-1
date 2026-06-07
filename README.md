@@ -6,8 +6,6 @@ Final Year Project prototype for logistics document extraction, benchmarking, an
 
 This system processes logistics documents such as invoices, airway bills, delivery orders, and packing lists. It supports PDF, image, Word, Excel, and TXT uploads, extracts structured fields, records benchmarking metrics, and lets users ask natural-language questions over processed document content.
 
-The prototype follows three FYP2 development modules:
-
 1. MLLM extraction: compare GPT-4o, Gemini 1.5 Pro, Claude 3.5 Sonnet, and Qwen-VL using one shared extraction schema.
 2. OCR and hybrid benchmarking: compare Tesseract, PaddleOCR, direct MLLM extraction, and OCR plus LLM structuring.
 3. RAG pipeline: chunk extracted content, embed document chunks, retrieve with dense and sparse ranking, and answer questions with grounded source chunks.
