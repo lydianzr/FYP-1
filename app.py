@@ -740,7 +740,7 @@ def show_workspace_sidebar():
         )
         st.sidebar.success(f"Saved {document['document_id']}")
 
-    with st.sidebar.expander("Reset demo data"):
+    with st.sidebar.expander("Reset data"):
         st.caption("Clear uploads, extraction outputs, metrics, processed files, and vector store data.")
         confirm_reset = st.checkbox(
             "I understand this will remove all demo data",
