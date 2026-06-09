@@ -539,7 +539,7 @@ def display_dataframe(df, column_labels=None, **kwargs):
     if column_labels:
         labels.update(column_labels)
 
-    st.dataframe(df.rename(columns=labels), **kwargs)
+    st.dataframe(df.rename(columns=labels), use_container_width=True)
 
 
 def file_format_badge(file_format):
@@ -911,7 +911,7 @@ def page_mllm_benchmark(documents):
                 "file_format": fmt,
                 "input_preparation": prep,
             })
-        st.dataframe(pd.DataFrame(preview_rows), width="stretch")
+        st.dataframe(pd.DataFrame(preview_rows), use_container_width=True)
 
     if st.button("Run MLLM Benchmark", type="primary", key="mllm_run_benchmark"):
         if not selected_docs:
@@ -1002,7 +1002,7 @@ def show_recent_outputs(module_source=None, document_ids=None):
             "Processing Time (s)": output.get("processing_time"),
             "Created At": output.get("created_at"),
         })
-    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 
 def page_results_dashboard(documents, outputs):
