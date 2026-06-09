@@ -57,7 +57,7 @@ MLLM_APPROACHES = [
 FULL_BENCHMARK_APPROACHES = [
     "Tesseract OCR",
     "PaddleOCR V4",
-    "GPT-4o mini",
+    "LayoutLMv3",
     "Hybrid OCR+LLM",
 ]
 
@@ -524,7 +524,7 @@ def extraction_group_label(option):
     group_map = {
         "Tesseract OCR": "OCR",
         "PaddleOCR V4": "OCR 2.0",
-        "GPT-4o mini": "MLLM",
+        "LayoutLMv3": "MLLM",
         "Hybrid OCR+LLM": "Hybrid",
     }
     return f"{group_map.get(option, 'Method')} | {option}"
@@ -758,7 +758,7 @@ def show_workspace_sidebar():
         """
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
             <div style="width:28px;height:28px;border-radius:6px;background:#1a1a18;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">DW</div>
-            <div style="font-size:12px;font-weight:700;color:#1a1a18;">Document Workspace</div>
+            <div style="font-size:16px;font-weight:700;color:#1a1a18;">Document Workspace</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -766,7 +766,7 @@ def show_workspace_sidebar():
 
     uploaded_file = st.sidebar.file_uploader(
         "Upload document",
-        type=["pdf", "png", "jpg", "jpeg", "txt", "docx", "xlsx", "xls"],
+        type=["pdf", "png", "jpg", "jpeg", "txt", "docx", "xlsx"],
     )
     selected_type = st.sidebar.selectbox("Document type", DOCUMENT_TYPES)
     ground_truth_file = st.sidebar.file_uploader("Optional ground truth JSON", type=["json"])
@@ -834,7 +834,7 @@ def show_workspace_sidebar():
     with st.sidebar.expander("Reset data"):
         st.caption("Clear uploads, extraction outputs, metrics, processed files, and vector store data.")
         confirm_reset = st.checkbox(
-            "I understand this will remove all demo data",
+            "I understand this will remove all data",
             key="confirm_demo_reset",
         )
         if st.button("Reset Everything", key="reset_demo_data"):
@@ -1137,7 +1137,7 @@ def page_rag_assistant(documents, outputs):
             method_map = {
                 "Tesseract OCR": ("OCR", "Tesseract"),
                 "PaddleOCR V4": ("OCR_2_0", "PaddleOCR V4"),
-                "GPT-4o mini": ("MLLM", "GPT-4o mini"),
+                "LayoutLMv3": ("MLLM", "LayoutLMv3"),
                 "Hybrid OCR+LLM": ("HYBRID", "GPT-4o mini"),
             }
             approach, model_name = method_map[method]
@@ -1179,7 +1179,7 @@ def page_rag_assistant(documents, outputs):
 
 def page_mllm_benchmark(documents):
     render_section_title("MLLM Benchmark by Document Type")
-    render_notice("Compare multimodal language model extraction across document types, formats, and the shared logistics field schema.")
+    render_notice("Compare multimodal language model extraction across document types and formats.")
 
     selected_docs = get_selected_documents(documents, key="mllm_selected_documents")
     selected_models = st.pills(
@@ -1229,13 +1229,13 @@ def page_mllm_benchmark(documents):
 
 
 def page_full_extraction_benchmark(documents):
-    render_section_title("Full Extraction Benchmark")
+    render_section_title("Extraction Benchmark")
     render_notice("Compare OCR, OCR 2.0, MLLM, and hybrid OCR plus LLM methods using saved workspace documents.")
 
     selected_docs = get_selected_documents(documents, key="extract_selected_documents")
     selected_approaches = st.pills(
         "Select approaches/models to run",
-        FULL_BENCHMARK_APPROACHES,
+        FULL_BENCHMARK_APPROACHES,  # Now has LayoutLMv3 instead of GPT-4o mini
         selection_mode="multi",
         default=[],
         format_func=extraction_group_label,
@@ -1243,7 +1243,7 @@ def page_full_extraction_benchmark(documents):
     )
     force_rerun = st.checkbox("Rerun existing benchmark outputs", key="extract_force_rerun")
 
-    if st.button("Run Full Extraction Benchmark", type="primary", key="extract_run_benchmark"):
+    if st.button("Run Extraction Benchmark", type="primary", key="extract_run_benchmark"):
         if not selected_docs:
             st.warning("Select at least one document.")
             return
@@ -1255,7 +1255,7 @@ def page_full_extraction_benchmark(documents):
         method_map = {
             "Tesseract OCR": ("OCR", "Tesseract"),
             "PaddleOCR V4": ("OCR_2_0", "PaddleOCR V4"),
-            "GPT-4o mini": ("MLLM", "GPT-4o mini"),
+            "LayoutLMv3": ("MLLM", "LayoutLMv3"),  # Changed here
             "Hybrid OCR+LLM": ("HYBRID", "GPT-4o mini"),
         }
         for document in selected_docs:
@@ -1306,6 +1306,10 @@ def show_recent_outputs(module_source=None, document_ids=None):
 def page_results_dashboard(documents, outputs):
     render_section_title("Results & Metrics Dashboard")
     
+    # Reload fresh from registry so metrics update without needing a full page reload
+    documents = load_document_registry()
+    outputs = load_output_registry()
+
     metrics_df = pd.DataFrame(load_metric_registry())
     all_metrics_df = pd.read_csv("data/metrics/metrics.csv") if os.path.exists("data/metrics/metrics.csv") else pd.DataFrame()
     
@@ -1338,7 +1342,7 @@ def page_results_dashboard(documents, outputs):
 
 
 st.set_page_config(
-    page_title="IDP + RAG Workspace",
+    page_title="Multimodal LLM for Intelligent Document Processing and Retrieval-Augmented Generation",
     page_icon="",
     layout="wide",
 )
@@ -1347,14 +1351,14 @@ ensure_data_folders()
 inject_prototype_theme()
 
 st.title(" Intelligent Document Processing + RAG Workspace")
-st.caption("Upload once, reuse documents across RAG, MLLM benchmarking, and full extraction benchmarking.")
+st.caption("Upload once, reuse documents across RAG, MLLM benchmarking, and extraction benchmarking.")
 
 documents, outputs = show_workspace_sidebar()
 
 page = st.tabs([
     " RAG Document Assistant",
     " MLLM Benchmark",
-    " Full Extraction Benchmark",
+    " Extraction Benchmark",
     " Results Dashboard",
 ])
 

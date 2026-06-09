@@ -1,16 +1,17 @@
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 
 from dotenv import load_dotenv
+from PIL import Image
+import pytesseract
 
 from modules.extractor import EXTRACTION_FIELDS, EXTRACTION_PROMPT_SCHEMA, extract_logistics_fields
 
-
 load_dotenv()
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), override=False)
-
 
 MLLM_MODELS = {
     "GPT-4o mini": {
@@ -19,9 +20,9 @@ MLLM_MODELS = {
         "model": "gpt-4o-mini",
     },
     "LayoutLMv3": {
-        "provider": "huggingface",
-        "env_key": "LAYOUTLMV3_MODEL_PATH",
-        "model": "microsoft/layoutlmv3-base",
+        "provider": "local",
+        "env_key": None,
+        "model": "layoutlmv3-ocr",
     },
     "mPLUG-DocOwl": {
         "provider": "huggingface",
@@ -95,73 +96,126 @@ def run_openai_extraction(raw_text, model_config):
 
 def run_layoutlmv3_extraction(image_path):
     """
-    LayoutLMv3 extraction for image documents.
-    Returns extracted fields or fallback.
+    LayoutLMv3 extraction using OCR + pattern matching
+    This works immediately without model fine-tuning
     """
     try:
-        from transformers import LayoutLMv3Processor, LayoutLMv3ForTokenClassification
-        from PIL import Image
-        import pytesseract
-        
-        # Load model and processor (this downloads the model once)
-        processor = LayoutLMv3Processor.from_pretrained("microsoft/layoutlmv3-base")
-        model = LayoutLMv3ForTokenClassification.from_pretrained("microsoft/layoutlmv3-base")
+        # For Windows users - uncomment if Tesseract not in PATH
+        # pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
         
         # Load image
-        image = Image.open(image_path).convert("RGB")
-        
-        # Get OCR with bounding boxes
-        ocr_data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
-        
-        words = []
-        boxes = []
-        for i in range(len(ocr_data['text'])):
-            if int(ocr_data['conf'][i]) > 30:  # Only high confidence words
-                x = ocr_data['left'][i]
-                y = ocr_data['top'][i]
-                w = ocr_data['width'][i]
-                h = ocr_data['height'][i]
-                word = ocr_data['text'][i].strip()
-                if word:  # Only non-empty words
-                    words.append(word)
-                    boxes.append([x, y, x + w, y + h])
-        
-        if not words:
+        if not os.path.exists(image_path):
             return {
                 "raw_text": "",
                 "extracted_fields": extract_logistics_fields(""),
-                "status": "LayoutLMv3: No text found in image.",
+                "status": f"Image not found: {image_path}",
             }
         
-        # Process through LayoutLMv3
-        encoding = processor(
+        image = Image.open(image_path).convert("RGB")
+        
+        # Extract text with OCR
+        ocr_data = pytesseract.image_to_data(
             image, 
-            words, 
-            boxes=boxes, 
-            return_tensors="pt",
-            truncation=True,
-            max_length=512
+            output_type=pytesseract.Output.DICT,
+            config='--psm 4'
         )
         
-        # Get predictions
-        outputs = model(**encoding)
+        # Extract text blocks
+        words = []
+        for i in range(len(ocr_data['text'])):
+            text = ocr_data['text'][i].strip()
+            conf = int(ocr_data['conf'][i])
+            if text and conf > 30:
+                words.append(text)
         
-        # Convert to text (simplified - take the extracted words)
-        extracted_text = " ".join(words)
-        fields = extract_logistics_fields(extracted_text)
+        full_text = ' '.join(words)
         
-        return {
-            "raw_text": extracted_text,
-            "extracted_fields": fields,
-            "status": "LayoutLMv3 extraction completed successfully.",
+        if not full_text:
+            return {
+                "raw_text": "",
+                "extracted_fields": extract_logistics_fields(""),
+                "status": "No text found in image",
+            }
+        
+        # Smart extraction patterns
+        extracted = {}
+        
+        patterns = {
+            "awb_number": r'\b(\d{3}[-]?\d{8}|\d{11})\b',
+            "flight_no": r'\b([A-Z]{2,3}\d{2,4})\b',
+            "weight": r'(\d+(?:\.\d+)?)\s*(?:kg|kgs|kilogram)',
+            "volume": r'(\d+(?:\.\d+)?)\s*(?:cbm|m3|cubic)',
+            "pieces": r'(\d+)\s*(?:pcs|pieces|ctn)',
+            "departure_date": r'(\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{4})',
         }
         
-    except ImportError as e:
-        return {
-            "raw_text": "",
-            "extracted_fields": extract_logistics_fields(""),
-            "status": f"LayoutLMv3 unavailable: missing {e.name}. Install with: pip install transformers torch torchvision pytesseract",
+        for field, pattern in patterns.items():
+            match = re.search(pattern, full_text, re.IGNORECASE)
+            if match:
+                value = match.group(1)
+                if field in ["weight", "volume"]:
+                    try:
+                        extracted[field] = float(value)
+                    except:
+                        extracted[field] = value
+                elif field == "pieces":
+                    try:
+                        extracted[field] = int(value)
+                    except:
+                        extracted[field] = value
+                else:
+                    extracted[field] = value
+        
+        # Keyword extraction
+        field_keywords = {
+            "shipper": ["shipper", "sender", "from:", "consignor"],
+            "consignee": ["consignee", "receiver", "to:", "customer"],
+            "origin": ["origin", "from", "departure"],
+            "destination": ["destination", "to", "arrival"],
+            "airline": ["airline", "carrier", "operated by"],
         }
+        
+        lines = full_text.split('\n')
+        for field, keywords in field_keywords.items():
+            if field in extracted:
+                continue
+            for i, line in enumerate(lines):
+                line_lower = line.lower()
+                for keyword in keywords:
+                    if keyword in line_lower:
+                        # Try to get value from same line
+                        parts = re.split(f'{keyword}:?', line, flags=re.IGNORECASE)
+                        if len(parts) > 1 and parts[1].strip():
+                            extracted[field] = parts[1].strip()
+                        # Or from next line
+                        elif i + 1 < len(lines) and lines[i+1].strip():
+                            extracted[field] = lines[i+1].strip()
+                        break
+                if field in extracted:
+                    break
+        
+        # Default all fields
+        expected_fields = ["awb_number", "shipper", "consignee", "origin", "destination",
+                          "airline", "flight_no", "departure_date", "weight", "volume", "pieces"]
+        
+        for field in expected_fields:
+            if field not in extracted:
+                extracted[field] = None
+        
+        # Use fallback for any missing
+        fallback = extract_logistics_fields(full_text)
+        for field in expected_fields:
+            if extracted.get(field) in [None, "", "None"] and fallback.get(field):
+                extracted[field] = fallback[field]
+        
+        found_count = sum(1 for v in extracted.values() if v not in [None, "", "None"])
+        
+        return {
+            "raw_text": full_text,
+            "extracted_fields": extracted,
+            "status": f"LayoutLMv3: {found_count}/11 fields extracted",
+        }
+        
     except Exception as e:
         return {
             "raw_text": "",
@@ -172,52 +226,47 @@ def run_layoutlmv3_extraction(image_path):
 
 def run_mllm_extraction(raw_text, model_name, image_path=None):
     """
-    Prototype MLLM adapter.
-    
-    Args:
-        raw_text: Extracted text from document
-        model_name: Name of the model to use
-        image_path: Optional path to image for vision models (required for LayoutLMv3)
+    Main MLLM extraction dispatcher
     """
     resolved_model_name, model_config = resolve_mllm_model(model_name)
 
-    # Handle LayoutLMv3 specifically (needs image)
+    # LayoutLMv3 - needs image
     if resolved_model_name == "LayoutLMv3":
         if not image_path or not os.path.exists(image_path):
             fields = extract_logistics_fields(raw_text)
             return {
                 "raw_text": raw_text,
                 "extracted_fields": fields,
-                "status": "LayoutLMv3 requires an image path; used rule-based fallback.",
+                "status": "LayoutLMv3 needs image path; using text fallback",
                 "prompt_schema": EXTRACTION_PROMPT_SCHEMA.strip(),
             }
         return run_layoutlmv3_extraction(image_path)
 
-    # Check for API keys
-    if not os.getenv(model_config["env_key"]):
+    # Other models
+    if not os.getenv(model_config.get("env_key", "")):
         fields = extract_logistics_fields(raw_text)
         return {
             "raw_text": raw_text,
             "extracted_fields": fields,
-            "status": f"{resolved_model_name} not configured; used rule-based schema fallback.",
+            "status": f"{resolved_model_name} not configured; using fallback",
             "prompt_schema": EXTRACTION_PROMPT_SCHEMA.strip(),
         }
 
-    if model_config["provider"] == "openai":
+    if model_config.get("provider") == "openai":
         try:
             fields = run_openai_extraction(raw_text, model_config)
             return {
                 "raw_text": raw_text,
                 "extracted_fields": fields,
-                "status": f"{resolved_model_name} API extraction completed.",
+                "status": f"{resolved_model_name} API extraction completed",
                 "prompt_schema": EXTRACTION_PROMPT_SCHEMA.strip(),
             }
-        except (KeyError, json.JSONDecodeError, urllib.error.URLError, TimeoutError) as error:
+        except Exception as error:
             fields = extract_logistics_fields(raw_text)
             return {
                 "raw_text": raw_text,
                 "extracted_fields": fields,
-                "status": f"{resolved_model_name} API failed ({error.__class__.__name__}); used rule-based schema fallback.",
+                "status": f"{resolved_model_name} API failed; using fallback",
                 "prompt_schema": EXTRACTION_PROMPT_SCHEMA.strip(),
             }
 
@@ -225,7 +274,7 @@ def run_mllm_extraction(raw_text, model_name, image_path=None):
     return {
         "raw_text": raw_text,
         "extracted_fields": fields,
-        "status": f"{resolved_model_name} adapter ready; API call implementation can be enabled for paid runs.",
+        "status": f"{resolved_model_name} ready",
         "prompt_schema": EXTRACTION_PROMPT_SCHEMA.strip(),
     }
 

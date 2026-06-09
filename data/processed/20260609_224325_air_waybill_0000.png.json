@@ -1,0 +1,21 @@
+{
+    "document_name": "air_waybill_0000.png",
+    "document_id": "doc_5f82306d75",
+    "selected_model": "MLLM - LayoutLMv3",
+    "raw_text": "AWB Number: 170-59244148\n\nShipper Bird Crawford and Dixon\nConsignee Wade-Lamb\n\nOrigin Japan\n\nDestination Singapore\n\nAirline Singapore Airlines\n\nFlight No CA642\n\nDeparture Date 2025-07 18\nWeight 3231 08 kg\n\nVolume 11.82 mé\n\nPieces 7\n\nAIR WAYBILL",
+    "extracted_fields": {
+        "awb_number": "170-59244148",
+        "flight_no": "CA642",
+        "weight": 3231.08,
+        "departure_date": "2025-07-18",
+        "shipper": "Bird, Crawford and Dixon Consignee: Wade-Lamb Origin: Japan Destination: Singapore Airline: Singapore Airlines Flight No.: CA642 Departure Date: 2025-07-18 Weight: 3231.08 kg Volume: 11.82 m* Pieces: 7 led on: 2025-07-01 03:54:00 AWB-0000",
+        "consignee": "Wade-Lamb Origin: Japan Destination: Singapore Airline: Singapore Airlines Flight No.: CA642 Departure Date: 2025-07-18 Weight: 3231.08 kg Volume: 11.82 m* Pieces: 7 led on: 2025-07-01 03:54:00 AWB-0000",
+        "origin": "Japan Destination: Singapore Airline: Singapore Airlines Flight No.: CA642 Departure Date: 2025-07-18 Weight: 3231.08 kg Volume: 11.82 m* Pieces: 7 led on: 2025-07-01 03:54:00 AWB-0000",
+        "destination": "Singapore Airline: Singapore Airlines Flight No.: CA642 Departure Date: 2025-07-18 Weight: 3231.08 kg Volume: 11.82 m* Pieces: 7 led on: 2025-07-01 03:54:00 AWB-0000",
+        "airline": "Singapore",
+        "volume": null,
+        "pieces": null
+    },
+    "processing_time": 0.796,
+    "pipeline_status": "LayoutLMv3: 9/11 fields extracted"
+}
