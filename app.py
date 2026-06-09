@@ -1160,7 +1160,7 @@ def page_rag_assistant(documents, outputs):
     question = st.text_input("Ask a question", placeholder="Example: What is the invoice number?", key="rag_question")
     top_k = st.slider("Retrieved chunks", min_value=1, max_value=10, value=3, key="rag_top_k")
 
-    if st.button("Build/Update RAG Index and Answer", type="primary", key="rag_answer"):
+    if st.button("Submit Question", type="primary", key="rag_answer"):
         if not selected_output_ids:
             st.warning("Select at least one extraction output.")
             return
