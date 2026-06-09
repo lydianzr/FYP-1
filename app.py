@@ -3,9 +3,12 @@ import importlib
 import os
 import time
 from html import escape
+from datetime import datetime
 
 import pandas as pd
 import streamlit as st
+import plotly.express as px
+import plotly.graph_objects as go
 
 from modules.evaluator import calculate_basic_metrics
 from modules.extractor import detect_document_type, extract_logistics_fields
@@ -174,6 +177,43 @@ def inject_prototype_theme():
         .stTabs [data-baseweb="tab-highlight"] {
             display: none;
         }
+
+        .dashboard-metric-card {
+            background: var(--bg-primary);
+            border: 0.5px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 16px 20px;
+            text-align: center;
+            transition: all 0.2s ease;
+        }
+        
+        .dashboard-metric-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        
+        .dashboard-metric-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--text-info);
+            line-height: 1.2;
+        }
+        
+        .dashboard-metric-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 8px;
+        }
+        
+        .dashboard-metric-trend {
+            font-size: 11px;
+            margin-top: 4px;
+        }
+        
+        .trend-up { color: var(--text-success); }
+        .trend-down { color: var(--text-danger); }
 
         div[data-testid="stVerticalBlock"] div[data-testid="stVerticalBlockBorderWrapper"],
         .proto-card {
@@ -745,25 +785,6 @@ def show_workspace_sidebar():
         )
         st.sidebar.success(f"Saved {document['document_id']}")
 
-    with st.sidebar.expander("Reset data"):
-        st.caption("Clear uploads, extraction outputs, metrics, processed files, and vector store data.")
-        confirm_reset = st.checkbox(
-            "I understand this will remove all demo data",
-            key="confirm_demo_reset",
-        )
-        if st.button("Reset Everything", key="reset_demo_data"):
-            if not confirm_reset:
-                st.warning("Tick the confirmation checkbox first.")
-            else:
-                deleted_counts = reset_demo_data()
-                st.session_state.clear()
-                st.session_state["demo_reset_done"] = deleted_counts
-                st.rerun()
-
-    if st.session_state.get("demo_reset_done"):
-        st.sidebar.success("Demo data reset. Workspace is clean.")
-        st.session_state.pop("demo_reset_done", None)
-
     documents = load_document_registry()
     outputs = load_output_registry()
 
@@ -808,7 +829,284 @@ def show_workspace_sidebar():
     else:
         st.sidebar.info("Upload a document once, then reuse it across all modules.")
 
+    # Move Reset Data to the bottom of the sidebar
+    st.sidebar.markdown("---")
+    with st.sidebar.expander("Reset data"):
+        st.caption("Clear uploads, extraction outputs, metrics, processed files, and vector store data.")
+        confirm_reset = st.checkbox(
+            "I understand this will remove all demo data",
+            key="confirm_demo_reset",
+        )
+        if st.button("Reset Everything", key="reset_demo_data"):
+            if not confirm_reset:
+                st.warning("Tick the confirmation checkbox first.")
+            else:
+                deleted_counts = reset_demo_data()
+                st.session_state.clear()
+                st.session_state["demo_reset_done"] = deleted_counts
+                st.rerun()
+
+    if st.session_state.get("demo_reset_done"):
+        st.sidebar.success("Demo data reset. Workspace is clean.")
+        st.session_state.pop("demo_reset_done", None)
+
     return documents, outputs
+
+
+def render_dashboard_metrics(all_metrics_df):
+    """Render dashboard-style metric cards"""
+    if all_metrics_df.empty:
+        st.info("No metrics data available yet. Run some extractions to see dashboard metrics.")
+        return
+    
+    # Calculate key metrics
+    total_documents = all_metrics_df["document_name"].nunique() if "document_name" in all_metrics_df.columns else 0
+    total_runs = len(all_metrics_df)
+    avg_f1 = all_metrics_df["f1_score"].mean() if "f1_score" in all_metrics_df.columns else 0
+    avg_processing_time = all_metrics_df["processing_time_seconds"].mean() if "processing_time_seconds" in all_metrics_df.columns else 0
+    
+    # Best and worst performers
+    if "f1_score" in all_metrics_df.columns and "model_name" in all_metrics_df.columns:
+        best_model_data = all_metrics_df.loc[all_metrics_df["f1_score"].idxmax()] if len(all_metrics_df) > 0 else None
+        worst_model_data = all_metrics_df.loc[all_metrics_df["f1_score"].idxmin()] if len(all_metrics_df) > 0 else None
+        best_model = best_model_data["model_name"] if best_model_data is not None else "N/A"
+        best_f1 = best_model_data["f1_score"] if best_model_data is not None else 0
+        worst_model = worst_model_data["model_name"] if worst_model_data is not None else "N/A"
+        worst_f1 = worst_model_data["f1_score"] if worst_model_data is not None else 0
+    else:
+        best_model, best_f1, worst_model, worst_f1 = "N/A", 0, "N/A", 0
+    
+    # Create 4 columns for top metrics
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.markdown(
+            f"""
+            <div class="dashboard-metric-card">
+                <div class="dashboard-metric-value">{total_documents}</div>
+                <div class="dashboard-metric-label">Documents Processed</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    
+    with col2:
+        st.markdown(
+            f"""
+            <div class="dashboard-metric-card">
+                <div class="dashboard-metric-value">{total_runs}</div>
+                <div class="dashboard-metric-label">Total Extraction Runs</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    
+    with col3:
+        st.markdown(
+            f"""
+            <div class="dashboard-metric-card">
+                <div class="dashboard-metric-value">{avg_f1:.2f}</div>
+                <div class="dashboard-metric-label">Average F1 Score</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    
+    with col4:
+        st.markdown(
+            f"""
+            <div class="dashboard-metric-card">
+                <div class="dashboard-metric-value">{avg_processing_time:.2f}s</div>
+                <div class="dashboard-metric-label">Avg Processing Time</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    
+    # Second row of metrics
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.markdown(
+            f"""
+            <div class="dashboard-metric-card">
+                <div class="dashboard-metric-value">{best_model}</div>
+                <div class="dashboard-metric-label">Best Model (F1: {best_f1:.3f})</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    
+    with col2:
+        st.markdown(
+            f"""
+            <div class="dashboard-metric-card">
+                <div class="dashboard-metric-value">{worst_model}</div>
+                <div class="dashboard-metric-label">Worst Model (F1: {worst_f1:.3f})</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    
+    with col3:
+        # Most used approach
+        if "approach" in all_metrics_df.columns:
+            most_used = all_metrics_df["approach"].mode().iloc[0] if len(all_metrics_df) > 0 else "N/A"
+            st.markdown(
+                f"""
+                <div class="dashboard-metric-card">
+                    <div class="dashboard-metric-value">{most_used}</div>
+                    <div class="dashboard-metric-label">Most Used Approach</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+    
+    with col4:
+        # Latest run time
+        if "created_at" in all_metrics_df.columns:
+            latest = all_metrics_df["created_at"].max() if len(all_metrics_df) > 0 else "N/A"
+            st.markdown(
+                f"""
+                <div class="dashboard-metric-card">
+                    <div class="dashboard-metric-value" style="font-size: 16px;">{latest}</div>
+                    <div class="dashboard-metric-label">Latest Run</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+
+def render_performance_charts(all_metrics_df):
+    """Render interactive performance charts"""
+    if all_metrics_df.empty:
+        return
+    
+    st.markdown("### Performance Analytics")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # F1 Score by Model (Bar Chart)
+        if "model_name" in all_metrics_df.columns and "f1_score" in all_metrics_df.columns:
+            model_performance = all_metrics_df.groupby("model_name")["f1_score"].mean().reset_index()
+            model_performance = model_performance.sort_values("f1_score", ascending=True)
+            
+            fig = px.bar(
+                model_performance,
+                x="f1_score",
+                y="model_name",
+                orientation='h',
+                title="Average F1 Score by Model",
+                color="f1_score",
+                color_continuous_scale="Blues",
+                text="f1_score"
+            )
+            fig.update_traces(texttemplate='%{text:.3f}', textposition='outside')
+            fig.update_layout(
+                height=300,
+                margin=dict(l=0, r=0, t=40, b=0),
+                xaxis_title="F1 Score",
+                yaxis_title=""
+            )
+            st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        # Processing Time by Approach
+        if "approach" in all_metrics_df.columns and "processing_time_seconds" in all_metrics_df.columns:
+            time_by_approach = all_metrics_df.groupby("approach")["processing_time_seconds"].mean().reset_index()
+            
+            fig = px.bar(
+                time_by_approach,
+                x="approach",
+                y="processing_time_seconds",
+                title="Average Processing Time by Approach",
+                color="processing_time_seconds",
+                color_continuous_scale="Reds",
+                text="processing_time_seconds"
+            )
+            fig.update_traces(texttemplate='%{text:.2f}s', textposition='outside')
+            fig.update_layout(
+                height=300,
+                margin=dict(l=0, r=0, t=40, b=0),
+                xaxis_title="",
+                yaxis_title="Time (seconds)"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+    
+    # Third chart: F1 Score by Document Type
+    if "document_type" in all_metrics_df.columns and "f1_score" in all_metrics_df.columns:
+        doc_type_performance = all_metrics_df.groupby("document_type")["f1_score"].mean().reset_index()
+        
+        fig = px.bar(
+            doc_type_performance,
+            x="document_type",
+            y="f1_score",
+            title="Average F1 Score by Document Type",
+            color="f1_score",
+            color_continuous_scale="Greens",
+            text="f1_score"
+        )
+        fig.update_traces(texttemplate='%{text:.3f}', textposition='outside')
+        fig.update_layout(
+            height=300,
+            margin=dict(l=0, r=0, t=40, b=0),
+            xaxis_title="",
+            yaxis_title="F1 Score"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+
+def render_detailed_records(all_metrics_df):
+    """Render detailed records in expandable section"""
+    with st.expander("📋 View Detailed Processing Records", expanded=False):
+        st.markdown("#### All Processing Records")
+        
+        # Add filter options
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if "document_type" in all_metrics_df.columns:
+                doc_types = ["All"] + sorted(all_metrics_df["document_type"].unique().tolist())
+                filter_doc_type = st.selectbox("Filter by Document Type", doc_types, key="filter_doc_type")
+            else:
+                filter_doc_type = "All"
+        
+        with col2:
+            if "approach" in all_metrics_df.columns:
+                approaches = ["All"] + sorted(all_metrics_df["approach"].unique().tolist())
+                filter_approach = st.selectbox("Filter by Approach", approaches, key="filter_approach")
+            else:
+                filter_approach = "All"
+        
+        with col3:
+            if "model_name" in all_metrics_df.columns:
+                models = ["All"] + sorted(all_metrics_df["model_name"].unique().tolist())
+                filter_model = st.selectbox("Filter by Model", models, key="filter_model")
+            else:
+                filter_model = "All"
+        
+        # Apply filters
+        filtered_df = all_metrics_df.copy()
+        if filter_doc_type != "All":
+            filtered_df = filtered_df[filtered_df["document_type"] == filter_doc_type]
+        if filter_approach != "All":
+            filtered_df = filtered_df[filtered_df["approach"] == filter_approach]
+        if filter_model != "All":
+            filtered_df = filtered_df[filtered_df["model_name"] == filter_model]
+        
+        # Display filtered dataframe
+        display_columns = ["document_name", "document_type", "approach", "model_name", "f1_score", "precision", "recall", "processing_time_seconds", "created_at"]
+        available_columns = [col for col in display_columns if col in filtered_df.columns]
+        st.dataframe(filtered_df[available_columns], use_container_width=True, hide_index=True)
+        
+        # Download button
+        csv = filtered_df.to_csv(index=False)
+        st.download_button(
+            label="📥 Download Filtered Data as CSV",
+            data=csv,
+            file_name=f"extraction_metrics_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv",
+        )
 
 
 def page_rag_assistant(documents, outputs):
@@ -877,11 +1175,6 @@ def page_rag_assistant(documents, outputs):
 
         st.markdown("### Answer")
         st.write(answer)
-        #st.markdown("### Retrieved Source Chunks")
-        #for i, source in enumerate(sources, start=1):
-            #source_name = source.get("document_name", source.get("Document_Name", "Unknown source"))
-            #st.markdown(f"**Source {i}: {source_name} | score: {source.get('retrieval_score', 'n/a')}**")
-            #st.write(source["text"])
 
 
 def page_mllm_benchmark(documents):
@@ -1012,70 +1305,57 @@ def show_recent_outputs(module_source=None, document_ids=None):
 
 def page_results_dashboard(documents, outputs):
     render_section_title("Results & Metrics Dashboard")
-    render_notice("Review saved documents, extraction outputs, metric records, and reusable RAG sources from one registry view.", "success")
-
+    
     metrics_df = pd.DataFrame(load_metric_registry())
     all_metrics_df = pd.read_csv("data/metrics/metrics.csv") if os.path.exists("data/metrics/metrics.csv") else pd.DataFrame()
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Uploaded Documents", len(documents))
-    c2.metric("Extraction Outputs", len(outputs))
-    c3.metric("Metric Results", len(metrics_df))
-    c4.metric("Available RAG Sources", len(outputs))
-
+    
+    # Top KPI Cards
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric(" Documents", len(documents))
+    with col2:
+        st.metric(" Extraction Outputs", len(outputs))
+    with col3:
+        st.metric(" Metric Records", len(metrics_df))
+    with col4:
+        st.metric(" RAG Sources", len(outputs))
+    
     if not all_metrics_df.empty:
-        scored = all_metrics_df.dropna(subset=["f1_score"], how="all") if "f1_score" in all_metrics_df.columns else pd.DataFrame()
-
-        if not scored.empty:
-            best = scored.sort_values("f1_score", ascending=False).iloc[0]
-            fastest = all_metrics_df.sort_values("processing_time_seconds", ascending=True).iloc[0]
-            st.markdown("### Summary")
-            st.write(f"Best model by F1-score: {best.get('model_name', best.get('selected_model'))} ({best.get('f1_score')})")
-            st.write(f"Fastest model: {fastest.get('model_name', fastest.get('selected_model'))} ({fastest.get('processing_time_seconds')}s)")
-
-        st.markdown("### All Processing Records")
-        display_dataframe(all_metrics_df, width="stretch", hide_index=True)
-
-        run_count_column = "document_name" if "document_name" in all_metrics_df.columns else "Document_Name"
-        if {"document_type", "approach", "model_name", "f1_score", "processing_time_seconds", run_count_column}.issubset(all_metrics_df.columns):
-            comparison = (
-                all_metrics_df.groupby(["document_type", "approach", "model_name"])
-                .agg(
-                    runs=(run_count_column, "count"),
-                    avg_precision=("precision", "mean"),
-                    avg_recall=("recall", "mean"),
-                    avg_f1=("f1_score", "mean"),
-                    avg_far=("far", "mean"),
-                    avg_processing_time=("processing_time_seconds", "mean"),
-                )
-                .reset_index()
-            )
-            st.markdown("### Comparison by Document Type")
-            display_dataframe(comparison, width="stretch", hide_index=True)
-
-    st.markdown("### Saved Extraction Outputs")
+        # Dashboard-style metric cards
+        #render_dashboard_metrics(all_metrics_df)
+        
+        # Interactive performance charts
+        render_performance_charts(all_metrics_df)
+        
+        # Detailed records in expandable section
+        render_detailed_records(all_metrics_df)
+    else:
+        st.info("No metrics data available yet. Run some extractions to see dashboard metrics and charts.")
+    
+    # Show recent outputs
+    st.markdown("### Recent Extraction Outputs")
     show_recent_outputs()
 
 
 st.set_page_config(
     page_title="IDP + RAG Workspace",
-    page_icon="DOC",
+    page_icon="",
     layout="wide",
 )
 
 ensure_data_folders()
 inject_prototype_theme()
 
-st.title("Intelligent Document Processing + RAG Workspace")
+st.title(" Intelligent Document Processing + RAG Workspace")
 st.caption("Upload once, reuse documents across RAG, MLLM benchmarking, and full extraction benchmarking.")
 
 documents, outputs = show_workspace_sidebar()
 
 page = st.tabs([
-    "RAG Document Assistant",
-    "MLLM Benchmark by Document Type",
-    "Full Extraction Benchmark",
-    "Results & Metrics Dashboard",
+    " RAG Document Assistant",
+    " MLLM Benchmark",
+    " Full Extraction Benchmark",
+    " Results Dashboard",
 ])
 
 with page[0]:
