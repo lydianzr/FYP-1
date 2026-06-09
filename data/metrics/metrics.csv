@@ -1,0 +1,3 @@
+document_name,document_type,document_format,selected_model,approach_type,model_name,processing_time_seconds,character_count,word_count,precision,recall,f1_score,far,correct_fields,extracted_field_count,ground_truth_field_count,output_id,document_id,module_source,approach
+air_waybill_0000.png,Air Waybill,image,MLLM - LayoutLMv3,MLLM,LayoutLMv3,274.413,244,35,0.0,0.0,0,0.0,0,1,13,out_bd9aede33a,doc_1e3fdcd98d,mllm_benchmark,MLLM
+air_waybill_0000.png,Air Waybill,image,MLLM - LayoutLMv3,MLLM,LayoutLMv3,3.525,244,35,0.0,0.0,0,0.0,0,1,13,out_0a9e64011f,doc_1e3fdcd98d,mllm_benchmark,MLLM

@@ -646,7 +646,12 @@ def run_pipeline(document, module_source, approach, model_name, force_rerun=Fals
 
     elif approach == "MLLM":
         extracted_text = prepare_input_text(document)
-        llm_result = run_mllm_extraction(extracted_text, model_name)
+        # Get image path if document is an image (for LayoutLMv3)
+        file_path = document["file_path"]
+        ext = os.path.splitext(file_path)[1].lower()
+        image_path = file_path if ext in [".png", ".jpg", ".jpeg"] else None
+        # Pass image_path to LayoutLMv3 if needed
+        llm_result = run_mllm_extraction(extracted_text, model_name, image_path=image_path)
         extracted_fields = llm_result["extracted_fields"]
         status = llm_result["status"]
 
@@ -872,11 +877,11 @@ def page_rag_assistant(documents, outputs):
 
         st.markdown("### Answer")
         st.write(answer)
-        st.markdown("### Retrieved Source Chunks")
-        for i, source in enumerate(sources, start=1):
-            source_name = source.get("document_name", source.get("Document_Name", "Unknown source"))
-            st.markdown(f"**Source {i}: {source_name} | score: {source.get('retrieval_score', 'n/a')}**")
-            st.write(source["text"])
+        #st.markdown("### Retrieved Source Chunks")
+        #for i, source in enumerate(sources, start=1):
+            #source_name = source.get("document_name", source.get("Document_Name", "Unknown source"))
+            #st.markdown(f"**Source {i}: {source_name} | score: {source.get('retrieval_score', 'n/a')}**")
+            #st.write(source["text"])
 
 
 def page_mllm_benchmark(documents):
